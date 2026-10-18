@@ -8,6 +8,9 @@
 #include "core/runtime.hh"
 #include "gui/interaction/mouse.hh"
 
+#include <vtk/vtkCamera.h>
+#include <vtk/vtkSmartPointer.h>
+
 #include <functional>
 #include <optional>
 #include <string>
@@ -64,6 +67,10 @@ private:
         -> bool;
     auto clear_preview(PngMapHandle&, Session&) noexcept -> bool;
     auto commit_session(PngMapHandle&, Session const&) noexcept -> bool;
+
+    vtkSmartPointer<vtkCamera> saved_camera;
+    bool saved_source_area_visible = false;
+    std::string editing_asset_id;
 
     Renderer& renderer;
     AssetsManager& assets;

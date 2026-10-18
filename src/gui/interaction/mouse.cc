@@ -146,6 +146,11 @@ auto Mouse::set_png_edit_tool(PngEditTool tool) noexcept -> void {
 auto Mouse::png_edit_tool() const noexcept -> PngEditTool { return png_edit_tool_mode; }
 
 auto Mouse::set_selected_asset(std::string id, std::string_view kind) noexcept -> void {
+    const auto restart_png_edit = current_mode == MouseModeId::PngEdit
+        && asset.has_value() && asset->id != id && kind == "png-map";
+    if (restart_png_edit) {
+        set_mode(MouseModeId::None);
+    }
     asset = MouseSelection {
         .id   = std::move(id),
         .kind = kind,
@@ -155,6 +160,9 @@ auto Mouse::set_selected_asset(std::string id, std::string_view kind) noexcept -
     if (iter != modes.end() && iter->second != nullptr
         && !iter->second->supports_selection(asset)) {
         set_mode(MouseModeId::None);
+    }
+    if (restart_png_edit) {
+        set_mode(MouseModeId::PngEdit);
     }
 }
 

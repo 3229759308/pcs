@@ -1,8 +1,12 @@
 #include "gui/interaction/png-edit-mode.hh"
 
+#include "core/handle/points.hh"
+#include "core/renderer.vtk.hh"
 #include "core/handle/png-map.hh"
 #include "core/map/png-map-transform.hh"
 #include "gui/interaction/png-edit-tools.hh"
+
+#include <algorithm>
 
 #include <algorithm>
 #include <array>
@@ -230,6 +234,41 @@ auto PngEditMode::allows_camera_interaction(Mouse const& mouse) const noexcept -
 }
 
 auto PngEditMode::on_init(Mouse& mouse) noexcept -> void {
+    const auto& selected = mouse.selected_asset();
+    if (selected.has_value()) {
+        auto handle = assets.get_handle<PngMapHandle>(selected->id);
+        if (handle.has_value() && *handle != nullptr) {
+            auto& map = **handle;
+            editing_asset_id = selected->id;
+            saved_source_area_visible = map.source_area_visibility();
+            map.set_source_area_visibility(false);
+
+            auto* render = renderer.vtk_context().render.GetPointer();
+            auto* camera = render->GetActiveCamera();
+            saved_camera = vtkSmartPointer<vtkCamera>::New();
+            saved_camera->DeepCopy(camera);
+            const auto width = map.get_width() * map.get_resolution();
+            const auto height = map.get_height() * map.get_resolution();
+            const auto x = map.get_origin_x() + width * 0.5;
+            const auto y = map.get_origin_y() + height * 0.5;
+            const auto z = map.get_plane_z();
+            camera->ParallelProjectionOn();
+            camera->SetFocalPoint(x, y, z);
+            camera->SetPosition(x, y, z + std::max({width, height, 1.0}));
+            camera->SetViewUp(0.0, 1.0, 0.0);
+            const auto aspect = std::max(render->GetTiledAspectRatio(), 1e-6);
+            camera->SetParallelScale(std::max({height, width / aspect, 1e-3}) * 0.55);
+
+            for (auto id : assets.get_asset_ids()) {
+                auto points = assets.get_handle<PointsHandle>(std::string(id));
+                if (points.has_value() && *points != nullptr) {
+                    (*points)->set_planar_projection(z + std::max(map.get_resolution(), 1e-6) * 0.01);
+                }
+            }
+            render->ResetCameraClippingRange();
+            assets.update_renderer();
+        }
+    }
     mouse.set_status(mode_status(mouse));
 
     mouse.on_move([this, &mouse](MouseEvent const& event) { on_move(mouse, event); });
@@ -248,6 +287,22 @@ auto PngEditMode::on_exit(Mouse& mouse) noexcept -> void {
 
     sessions.clear();
 
+    for (auto id : assets.get_asset_ids()) {
+        auto points = assets.get_handle<PointsHandle>(std::string(id));
+        if (points.has_value() && *points != nullptr) {
+            (*points)->set_planar_projection(std::nullopt);
+        }
+    }
+    if (auto map = assets.get_handle<PngMapHandle>(editing_asset_id);
+        map.has_value() && *map != nullptr) {
+        (*map)->set_source_area_visibility(saved_source_area_visible);
+    }
+    editing_asset_id.clear();
+    if (saved_camera != nullptr) {
+        renderer.vtk_context().render->GetActiveCamera()->DeepCopy(saved_camera);
+        saved_camera = nullptr;
+    }
+    assets.update_renderer();
     mouse.set_status("PNG 编辑: 关闭");
 }
 

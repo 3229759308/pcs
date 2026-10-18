@@ -32,6 +32,9 @@ public:
     auto pick_position(Renderer&, int display_x, int display_y) const noexcept
         -> std::optional<Position>;
 
+    // Display-only XY projection; the source point cloud remains unchanged.
+    auto set_planar_projection(std::optional<double> plane_z) noexcept -> void;
+
     auto set_visibility(bool) noexcept -> void;
     auto set_coordinate_visibility(bool) noexcept -> void;
     auto coordinate_visibility() const noexcept -> bool;

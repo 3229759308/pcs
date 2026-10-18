@@ -13,6 +13,9 @@
 #include <QRegion>
 #include <QVBoxLayout>
 
+#include <vtkInteractorStyleImage.h>
+#include <vtkObjectFactory.h>
+#include <vtkSmartPointer.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 
@@ -37,6 +40,28 @@ struct Rounded : public T {
 
     double rounded_radius = 10;
 };
+
+class PngPlanarInteractorStyle : public vtkInteractorStyleImage {
+public:
+    static PngPlanarInteractorStyle* New();
+    vtkTypeMacro(PngPlanarInteractorStyle, vtkInteractorStyleImage);
+
+    void OnLeftButtonDown() override {
+        auto* position = this->Interactor->GetEventPosition();
+        this->FindPokedRenderer(position[0], position[1]);
+        if (this->CurrentRenderer != nullptr) {
+            this->StartPan();
+        }
+    }
+
+    void OnLeftButtonUp() override { this->EndPan(); }
+    void Rotate() override { }
+    void Spin() override { }
+    // VTK keyboard shortcuts can otherwise change the camera orientation.
+    void OnChar() override { }
+};
+
+vtkStandardNewMacro(PngPlanarInteractorStyle);
 
 class InteractiveVtkWindow : public Rounded<pcs::QtVtkWindow> {
 public:
@@ -118,6 +143,16 @@ public:
         auto* interactor = renderWindow() != nullptr ? renderWindow()->GetInteractor() : nullptr;
         if (interactor == nullptr) {
             return;
+        }
+
+        if (mouse.mode() == pcs::gui::interaction::MouseModeId::PngEdit) {
+            if (saved_interactor_style == nullptr) {
+                saved_interactor_style = interactor->GetInteractorStyle();
+                interactor->SetInteractorStyle(planar_interactor_style);
+            }
+        } else if (saved_interactor_style != nullptr) {
+            interactor->SetInteractorStyle(saved_interactor_style);
+            saved_interactor_style = nullptr;
         }
 
         if (allow_camera_interaction()) {
@@ -242,6 +277,9 @@ private:
         }
     }
 
+    vtkSmartPointer<vtkInteractorObserver> saved_interactor_style;
+    vtkSmartPointer<PngPlanarInteractorStyle> planar_interactor_style =
+        vtkSmartPointer<PngPlanarInteractorStyle>::New();
     pcs::gui::interaction::Mouse& mouse;
     FilledCard* status_card    = nullptr;
     FilledCard* operation_card = nullptr;

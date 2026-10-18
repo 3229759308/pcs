@@ -40,6 +40,11 @@ auto PointsHandle::pick_position(Renderer& renderer, int display_x, int display_
     return renderer.pick(*pimpl->unit, display_x, display_y);
 }
 
+auto PointsHandle::set_planar_projection(std::optional<double> plane_z) noexcept -> void {
+    pimpl->projection_plane_z = plane_z;
+    pimpl->apply_projection();
+}
+
 auto PointsHandle::set_visibility(bool on) noexcept -> void {
     pimpl->set_visibility(on);
 }

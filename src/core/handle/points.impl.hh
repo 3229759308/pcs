@@ -7,6 +7,8 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+#include <vtk/vtkMatrix4x4.h>
+
 #include <algorithm>
 #include <cstdint>
 
@@ -21,6 +23,39 @@ struct PointsHandle::Impl final {
 
     std::unique_ptr<PointsUnit> unit;
     std::shared_ptr<PointCloud> points;
+    std::optional<double> projection_plane_z;
+    vtkSmartPointer<vtkProperty> original_property;
+
+    auto apply_projection() noexcept -> void {
+        if (unit == nullptr) {
+            return;
+        }
+        auto actor = unit->actor();
+        if (projection_plane_z.has_value()) {
+            if (original_property == nullptr) {
+                original_property = vtkSmartPointer<vtkProperty>::New();
+                original_property->DeepCopy(actor->GetProperty());
+            }
+            auto matrix = vtkSmartPointer<vtkMatrix4x4>::New();
+            matrix->Identity();
+            matrix->SetElement(2, 2, 0.0);
+            // Keep the overlay just above the opaque PNG to avoid depth fighting.
+            matrix->SetElement(2, 3, *projection_plane_z);
+            actor->SetUserMatrix(matrix);
+            actor->GetProperty()->SetColor(1.0, 0.0, 0.0);
+            actor->GetProperty()->SetOpacity(0.5);
+            actor->GetProperty()->LightingOff();
+        } else {
+            actor->SetUserMatrix(nullptr);
+            if (original_property != nullptr) {
+                actor->GetProperty()->DeepCopy(original_property);
+                original_property = nullptr;
+            }
+        }
+        unit->set_coordinate_visibility(visible && coordinate_visible
+            && !projection_plane_z.has_value());
+    }
+
     bool coordinate_visible = true;
     bool visible            = true;
     std::vector<Renderer*> attached_renderers;
@@ -34,13 +69,14 @@ struct PointsHandle::Impl final {
             }
         }
 
-        unit = std::move(next_unit);
+        original_property = nullptr;
+        unit              = std::move(next_unit);
         if (unit == nullptr) {
             return;
         }
 
         unit->set_visibility(visible);
-        unit->set_coordinate_visibility(visible && coordinate_visible);
+        apply_projection();
 
         for (auto* renderer : attached_renderers) {
             if (renderer != nullptr) {
@@ -107,7 +143,7 @@ struct PointsHandle::Impl final {
     auto set_coordinate_visibility(bool on) noexcept -> void {
         coordinate_visible = on;
         if (unit != nullptr) {
-            unit->set_coordinate_visibility(visible && on);
+            unit->set_coordinate_visibility(visible && on && !projection_plane_z.has_value());
         }
     }
 
@@ -115,7 +151,8 @@ struct PointsHandle::Impl final {
         visible = on;
         if (unit != nullptr) {
             unit->set_visibility(on);
-            unit->set_coordinate_visibility(on && coordinate_visible);
+            unit->set_coordinate_visibility(
+                on && coordinate_visible && !projection_plane_z.has_value());
         }
     }
 
